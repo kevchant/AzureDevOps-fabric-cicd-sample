@@ -1,4 +1,4 @@
-# AzDo-fabric-cicd-sample to operationalize fabric-cicd to work with Microsoft Fabric and YAML Pipelines in Azure DevOps
+# AzureDevOps-fabric-cicd-sample to operationalize fabric-cicd to work with Microsoft Fabric and YAML Pipelines in Azure DevOps
 
 Contains three different YAML files which can be used operationalize [fabric-cicd](https://github.com/microsoft/fabric-cicd) to work with Microsoft Fabric and YAML Pipelines in Azure DevOps. Based on a blog post I published that shows how to operationalize fabric-cicd to work with Microsoft Fabric and YAML Pipelines.
 
