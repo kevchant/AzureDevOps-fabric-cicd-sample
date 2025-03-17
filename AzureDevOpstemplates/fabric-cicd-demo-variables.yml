@@ -1,0 +1,124 @@
+# YAML pipeline to deploy fabric-cicd to multiple environments
+# Requires the below variables
+# AZURE_CLIENT_ID - Your service principal client id without quotes
+# AZURE_CLIENT_SECRET - our service principal secret vale
+# AZURE_TENANT_ID - Your Azure Tenant Id without quotes
+# #  ItemsInScope - List of otems you want to deploy, in the format of below:
+#   # "Notebook,Environment,Report,SemanticModel"
+# ProdWorkspace - Your production Workspace ID
+# resourceUrl - URL for authentication (e.g. https://api.fabric.microsoft.com)
+# TestWorkspace - Your Test workspace ID
+
+
+# This pipeline uses the variable groups below
+# Feel free to create your own or use the below
+variables:
+- group: fabric-cicd-ns
+- group: fabric-cicd-s
+
+trigger: none
+# In this pipeline I use a Microsoft-hosted agent
+# To reference a self-hosted agent instead swap around the commented and uncommented references
+pool: 
+  vmImage: 'windows-latest'
+
+stages:
+
+- stage: Test
+  displayName: 'Deploy to Test'
+  
+  jobs:
+  - job: 'DeployTest'
+    displayName: 'Deploy To Test'
+
+    steps:
+
+      - task: UsePythonVersion@0
+        displayName: 'Use Python 3.11'
+        inputs:
+          versionSpec: 3.11
+
+      - task: PowerShell@2
+        displayName: 'Install necessary libraries'
+        inputs:
+          targetType: 'inline'
+          script: |
+            python -m pip install --upgrade pip
+            pip install fabric-cicd
+            # pip install azure-identity
+          pwsh: true
+
+      - task: PowerShell@2
+        displayName: 'Authenticate as Service Principal'
+        inputs:
+          targetType: 'inline'
+          script: |
+            Install-Module -Name Az.Accounts -AllowClobber -Force
+
+            $SecureStringPwd = ConvertTo-SecureString $(AZURE_CLIENT_SECRET) -AsPlainText -Force
+            $pscredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $(AZURE_CLIENT_ID), $SecureStringPwd
+                              
+            Connect-AzAccount -ServicePrincipal -Credential $pscredential -Tenant $(AZURE_TENANT_ID)
+
+            $fabricToken = (Get-AzAccessToken -ResourceUrl $(resourceUrl)).Token
+          pwsh: true
+
+      - task: PythonScript@0
+        displayName: 'Run script to deploy with fabric-cicd to Test'
+        inputs:
+          scriptPath: 'auth_spn_secret_AzDo.py'
+          arguments: '--WorkspaceId $(TestWorkspace) --Environment "Test" --RepositoryDirectory "$(Build.SourcesDirectory)\workspace" --ItemsInScope  $(ItemsInScope)'
+
+- stage: Prod
+  displayName: 'Deploy to Production'
+  jobs:
+    - deployment: 'DeployProd'
+      displayName: 'Deploy to Prod'
+      environment: Production
+
+      # Just to raise awareness that you can select pools at different stages
+      # pool: 
+      #   vmImage: 'windows-latest'
+
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+            - checkout: self
+              path: 'self'
+
+            - task: UsePythonVersion@0
+              displayName: 'Use Python 3.11'
+              inputs:
+                versionSpec: 3.11
+
+            - task: PowerShell@2
+              displayName: 'Install necessary libraries'
+              inputs:
+                targetType: 'inline'
+                script: |
+                  python -m pip install --upgrade pip
+                  pip install fabric-cicd
+                  pip install azure-identity
+                pwsh: true
+
+            - task: PowerShell@2
+              displayName: 'Authenticate as Service Principal'
+              inputs:
+                targetType: 'inline'
+                script: |
+                  Install-Module -Name Az.Accounts -AllowClobber -Force
+
+                  $SecureStringPwd = ConvertTo-SecureString $(AZURE_CLIENT_SECRET) -AsPlainText -Force
+                  $pscredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $(AZURE_CLIENT_ID), $SecureStringPwd
+                                    
+                  Connect-AzAccount -ServicePrincipal -Credential $pscredential -Tenant $(AZURE_TENANT_ID)
+
+                  $fabricToken = (Get-AzAccessToken -ResourceUrl $(resourceUrl)).Token
+                pwsh: true
+
+            - task: PythonScript@0
+              displayName: 'Run script to deploy with fabric-cicd to Test'
+              inputs:
+                scriptPath: 'auth_spn_secret_AzDo.py'
+                arguments: '--WorkspaceId $(ProdWorkspace) --Environment "Prod" --RepositoryDirectory "$(Build.SourcesDirectory)\workspace" --ItemsInScope  $(ItemsInScope)'
