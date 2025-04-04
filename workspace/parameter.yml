@@ -1,6 +1,14 @@
 find_replace:
-    # SQL Connection Guid
-    "This is a Report in Dev!!!":
+    # Replace Power BI Text
+    - find_value: "This is a Report in Dev!!!"
+      replace_value:
         Test: "This is a Report in Test!!!"
         Prod: "This is a Report in Prod!!!"
+        
+# Old format
+# find_replace:
+#     # SQL Connection Guid
+#     "This is a Report in Dev!!!":
+#         Test: "This is a Report in Test!!!"
+#         Prod: "This is a Report in Prod!!!"
 
