@@ -1,0 +1,139 @@
+# YAML pipeline that create a new workspace wth Fabric CLI and then uses fabric-cicd to deploy to the new workspace
+# Requires the below variables
+# For both stages
+# AZURE_CLIENT_ID - Your service principal client id without quotes
+# AZURE_CLIENT_SECRET - our service principal secret vale
+# AZURE_TENANT_ID - Your Azure Tenant Id without quotes
+# AZURE_TENANT_ID - Your Azure Tenant Id without quotes
+# For Fabric-CLI stage
+# CapacityName - Name of destination Fabric capacity
+# EntraObjectId - Object Id of the entra user you want to assign the permissions for
+# For fabric-cli stage
+# #  ItemsInScope - List of otems you want to deploy, in the format of below:
+#   # "Notebook,Environment,Report,SemanticModel"
+# resourceUrl - URL for authentication (e.g. https://api.fabric.microsoft.com)
+
+# Below are the parameters
+parameters:
+- name: WorkspaceName
+  type: string
+  default: "FabricCLI"
+
+
+# This pipeline uses the variable groups below
+# Feel free to create your own or use the below
+variables:
+- group: fabric-cicd-ns
+- group: fabric-cicd-s
+
+trigger: none
+# In this pipeline I use a Microsoft-hosted agent
+# To reference a self-hosted agent instead swap around the commented and uncommented references
+pool: 
+  vmImage: 'windows-latest'
+
+stages:
+
+- stage: CreateWorkspace
+  displayName: 'Create Workspace'
+  
+  jobs:
+  - job: 'CreateWorkspace'
+    displayName: 'Create Workspace'
+
+    steps:
+
+      - task: UsePythonVersion@0
+        displayName: 'Use Python 3.12'
+        inputs:
+          versionSpec: 3.11
+
+      - task: PowerShell@2
+        displayName: 'Install necessary libraries'
+        inputs:
+          targetType: 'inline'
+          script: |
+            python -m pip install --upgrade pip
+            pip install ms-fabric-cli
+          pwsh: true
+
+      - task: PowerShell@2
+        displayName: 'Authenticate as Service Principal'
+        inputs:
+          targetType: 'inline'
+          script: |
+            fab auth login -u $(azure_client_id) -p $(azure_client_secret) --tenant $(azure_tenant_id)
+          pwsh: true
+
+      - task: PowerShell@2
+        displayName: 'Create workspace'
+        inputs:
+          targetType: 'inline'
+          script: |
+            fab create ${{parameters.WorkspaceName}}.Workspace -P capacityname=$(CapacityName)
+          pwsh: true
+
+      - task: PowerShell@2
+        displayName: 'Add permissions to workspace'
+        inputs:
+          targetType: 'inline'
+          script: |
+            fab acl set ${{parameters.WorkspaceName}}.Workspace -I $(EntraObjectId) -R admin -f
+          pwsh: true
+
+      - task: PowerShell@2
+        displayName: 'Get Workspace Id'
+        name: GetWorkspaceId  # Add a name to the task
+        inputs:
+          targetType: 'inline'
+          script: |
+            $WorkspaceId = fab get ${{parameters.WorkspaceName}}.Workspace -q id
+            Write-Host "##vso[task.setvariable variable=WorkspaceId;isOutput=true]$($WorkspaceId)"
+          pwsh: true
+
+- stage: PopulateWorkspace
+  displayName: 'Populate Workspace'
+  dependsOn: CreateWorkspace
+  jobs:
+  - job: 'PopulateWorkspace'
+    displayName: 'Populate Workspace'
+    variables:
+      WorkspaceId: $[ dependencies.CreateWorkspace.outputs['CreateWorkspace.GetWorkspaceId.WorkspaceId'] ]
+    steps:
+
+      # - task: UsePythonVersion@0
+      #   displayName: 'Use Python 3.12'
+      #   inputs:
+      #     versionSpec: 3.11
+
+      # - task: PowerShell@2
+      #   displayName: 'Install necessary libraries'
+      #   inputs:
+      #     targetType: 'inline'
+      #     script: |
+      #       python -m pip install --upgrade pip
+      #       pip install fabric-cicd
+      #     pwsh: true
+
+      # - task: PowerShell@2
+      #   displayName: 'Authenticate as Service Principal'
+      #   inputs:
+      #     targetType: 'inline'
+      #     script: |
+      #       Install-Module -Name Az.Accounts -AllowClobber -Force
+
+      #       $SecureStringPwd = ConvertTo-SecureString $(AZURE_CLIENT_SECRET) -AsPlainText -Force
+      #       $pscredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $(AZURE_CLIENT_ID), $SecureStringPwd
+                              
+      #       Connect-AzAccount -ServicePrincipal -Credential $pscredential -Tenant $(AZURE_TENANT_ID)
+
+      #       $fabricToken = (Get-AzAccessToken -ResourceUrl $(resourceUrl)).Token
+      #     pwsh: true
+
+      - task: PowerShell@2
+        displayName: 'Check workspace id'
+        inputs:
+          targetType: 'inline'
+          script: |
+            Write-Host "Value from previous stage: $(WorkspaceId)"
+          pwsh: true
