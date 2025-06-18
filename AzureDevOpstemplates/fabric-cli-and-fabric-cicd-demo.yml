@@ -6,7 +6,7 @@
 # AZURE_TENANT_ID - Your Azure Tenant Id without quotes
 # AZURE_TENANT_ID - Your Azure Tenant Id without quotes
 # For Fabric-CLI stage
-# CapacityName - Name of destination Fabric capacity
+# CapacityName - Name of Fabric capacity the new workspace will be using
 # EntraObjectId - Object Id of the entra user you want to assign the permissions for
 # For fabric-cli stage
 # #  ItemsInScope - List of otems you want to deploy, in the format of below:
@@ -46,7 +46,7 @@ stages:
       - task: UsePythonVersion@0
         displayName: 'Use Python 3.12'
         inputs:
-          versionSpec: 3.11
+          versionSpec: 3.12
 
       - task: PowerShell@2
         displayName: 'Install necessary libraries'
@@ -83,7 +83,7 @@ stages:
 
       - task: PowerShell@2
         displayName: 'Get Workspace Id'
-        name: GetWorkspaceId  # Add a name to the task
+        name: GetWorkspaceId  
         inputs:
           targetType: 'inline'
           script: |
@@ -98,42 +98,40 @@ stages:
   - job: 'PopulateWorkspace'
     displayName: 'Populate Workspace'
     variables:
-      WorkspaceId: $[ dependencies.CreateWorkspace.outputs['CreateWorkspace.GetWorkspaceId.WorkspaceId'] ]
+      WorkspaceId: $[ stagedependencies.CreateWorkspace.CreateWorkspace.outputs['GetWorkspaceId.WorkspaceId'] ]
     steps:
 
-      # - task: UsePythonVersion@0
-      #   displayName: 'Use Python 3.12'
-      #   inputs:
-      #     versionSpec: 3.11
-
-      # - task: PowerShell@2
-      #   displayName: 'Install necessary libraries'
-      #   inputs:
-      #     targetType: 'inline'
-      #     script: |
-      #       python -m pip install --upgrade pip
-      #       pip install fabric-cicd
-      #     pwsh: true
-
-      # - task: PowerShell@2
-      #   displayName: 'Authenticate as Service Principal'
-      #   inputs:
-      #     targetType: 'inline'
-      #     script: |
-      #       Install-Module -Name Az.Accounts -AllowClobber -Force
-
-      #       $SecureStringPwd = ConvertTo-SecureString $(AZURE_CLIENT_SECRET) -AsPlainText -Force
-      #       $pscredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $(AZURE_CLIENT_ID), $SecureStringPwd
-                              
-      #       Connect-AzAccount -ServicePrincipal -Credential $pscredential -Tenant $(AZURE_TENANT_ID)
-
-      #       $fabricToken = (Get-AzAccessToken -ResourceUrl $(resourceUrl)).Token
-      #     pwsh: true
+      - task: UsePythonVersion@0
+        displayName: 'Use Python 3.12'
+        inputs:
+          versionSpec: 3.12
 
       - task: PowerShell@2
-        displayName: 'Check workspace id'
+        displayName: 'Install necessary libraries'
         inputs:
           targetType: 'inline'
           script: |
-            Write-Host "Value from previous stage: $(WorkspaceId)"
+            python -m pip install --upgrade pip
+            pip install fabric-cicd
           pwsh: true
+
+      - task: PowerShell@2
+        displayName: 'Authenticate as Service Principal'
+        inputs:
+          targetType: 'inline'
+          script: |
+            Install-Module -Name Az.Accounts -AllowClobber -Force
+
+            $SecureStringPwd = ConvertTo-SecureString $(AZURE_CLIENT_SECRET) -AsPlainText -Force
+            $pscredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $(AZURE_CLIENT_ID), $SecureStringPwd
+                              
+            Connect-AzAccount -ServicePrincipal -Credential $pscredential -Tenant $(AZURE_TENANT_ID)
+
+            $fabricToken = (Get-AzAccessToken -ResourceUrl $(resourceUrl)).Token
+          pwsh: true
+
+      - task: PythonScript@0
+        displayName: 'Run script to deploy with fabric-cicd to Test'
+        inputs:
+          scriptPath: 'auth_spn_secret_AzDo.py'
+          arguments: '--WorkspaceId $(WorkspaceId) --Environment "Prod" --RepositoryDirectory "$(Build.SourcesDirectory)\workspace" --ItemsInScope  $(ItemsInScope)'
